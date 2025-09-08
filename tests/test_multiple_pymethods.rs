@@ -93,3 +93,19 @@ fn auto_new() {
         );
     });
 }
+
+#[test]
+fn auto_new_annotations() {
+    Python::attach(|py| {
+        let cls = py.get_type::<AutoNewCls>();
+        pyo3::py_run!(
+            py,
+            cls,
+            r#"
+            a = cls(1, 'two', 3.0)
+            ann = a._pyo3_generated_annotations()
+            assert len(ann) == 3
+        "#
+        );
+    });
+}

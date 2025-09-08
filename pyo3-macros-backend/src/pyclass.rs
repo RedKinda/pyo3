@@ -2290,6 +2290,7 @@ fn pyclass_auto_new<'a>(
                                 {
                                     let type_output = <#field_types as #pyo3_path::IntoPyObject>::type_output();
                                     let s = format!("{}", type_output);
+                                    // println!("Type output for field {}: {:?}", stringify!(#field_idents), type_output);
                                     // make it a python string
                                     let py_type_name = #pyo3_path::types::PyString::new(py, &s);
                                     #pyo3_path::types::PyDictMethods::set_item(
@@ -2486,7 +2487,23 @@ impl<'a> PyClassImplsBuilder<'a> {
         if attr.options.extends.is_none() {
             let output_type = if cfg!(feature = "experimental-inspect") {
                 let full_name = get_class_python_module_and_name(cls, self.attr);
-                quote! { const OUTPUT_TYPE: &'static str = #full_name; }
+
+                let module = if let Some(module) = &attr.options.module {
+                    quote! { #pyo3_path::inspect::types::ModuleName::Module(::std::borrow::Cow::Borrowed(stringify!(#module))) }
+                } else {
+                    quote! { #pyo3_path::inspect::types::ModuleName::CurrentModule }
+                };
+
+                quote! {
+                    const OUTPUT_TYPE: &'static str = #full_name;
+                    fn type_output() -> #pyo3_path::inspect::types::TypeInfo {
+                        #pyo3_path::inspect::types::TypeInfo::Class {
+                            module: #module,
+                            name: ::std::borrow::Cow::Borrowed(Self::OUTPUT_TYPE),
+                            type_vars: ::std::vec::Vec::new(),
+                        }
+                    }
+                }
             } else {
                 quote! {}
             };

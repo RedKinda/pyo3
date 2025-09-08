@@ -94,6 +94,20 @@ impl TypeInfo {
             TypeInfo::Class { name, .. } => name,
         })
     }
+
+    /// Returns the qualified name of a type
+    ///
+    /// This includes the module name (e.g. `typing.List` instead of just `List`) alongside the type name
+    /// This excludes builtins, aka `builtins.int` will just be `int`
+    pub fn qualified_name(&self) -> Cow<'_, str> {
+        if let Some(module) = self.module_name() {
+            if module != "builtins" {
+                return Cow::from(format!("{module}.{}", self.name()));
+            }
+        }
+
+        self.name()
+    }
 }
 
 // Utilities for easily instantiating TypeInfo structures for built-in/common types.
@@ -245,9 +259,8 @@ impl Display for TypeInfo {
                 write!(f, "]")
             }
             TypeInfo::UnsizedTypedTuple(t) => write!(f, "Tuple[{t}, ...]"),
-            TypeInfo::Class {
-                name, type_vars, ..
-            } => {
+            c @ TypeInfo::Class { type_vars, .. } => {
+                let name = c.qualified_name();
                 write!(f, "{name}")?;
 
                 if !type_vars.is_empty() {

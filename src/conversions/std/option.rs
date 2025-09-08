@@ -1,7 +1,7 @@
-use crate::{
-    conversion::IntoPyObject, types::any::PyAnyMethods, BoundObject, FromPyObject, PyAny, Python,
-};
 use crate::{Borrowed, Bound};
+use crate::{
+    BoundObject, FromPyObject, PyAny, Python, conversion::IntoPyObject, types::any::PyAnyMethods,
+};
 
 impl<'py, T> IntoPyObject<'py> for Option<T>
 where
@@ -21,6 +21,11 @@ where
             },
         )
     }
+
+    #[cfg(feature = "experimental-inspect")]
+    fn type_output() -> crate::inspect::types::TypeInfo {
+        crate::inspect::types::TypeInfo::optional_of(T::type_output())
+    }
 }
 
 impl<'a, 'py, T> IntoPyObject<'py> for &'a Option<T>
@@ -34,6 +39,11 @@ where
     #[inline]
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         self.as_ref().into_pyobject(py)
+    }
+
+    #[cfg(feature = "experimental-inspect")]
+    fn type_output() -> crate::inspect::types::TypeInfo {
+        crate::inspect::types::TypeInfo::optional_of(<&'a T as IntoPyObject<'py>>::type_output())
     }
 }
 
