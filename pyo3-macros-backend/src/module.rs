@@ -8,26 +8,26 @@ use crate::introspection::{
 use crate::utils::expr_to_python;
 use crate::{
     attributes::{
-        self, kw, take_attributes, take_pyo3_options, CrateAttribute, GILUsedAttribute,
-        ModuleAttribute, NameAttribute, SubmoduleAttribute,
+        self, CrateAttribute, GILUsedAttribute, ModuleAttribute, NameAttribute, SubmoduleAttribute,
+        kw, take_attributes, take_pyo3_options,
     },
     combine_errors::CombineErrors,
     get_doc,
     pyclass::PyClassPyO3Option,
-    pyfunction::{impl_wrap_pyfunction, PyFunctionOptions},
-    utils::{has_attribute, has_attribute_with_namespace, Ctx, IdentOrStr, LitCStr},
+    pyfunction::{PyFunctionOptions, impl_wrap_pyfunction},
+    utils::{Ctx, IdentOrStr, LitCStr, has_attribute, has_attribute_with_namespace},
 };
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use std::ffi::CString;
 use syn::{
+    Item, Meta, Path, Result,
     ext::IdentExt,
     parse::{Parse, ParseStream},
     parse_quote, parse_quote_spanned,
     punctuated::Punctuated,
     spanned::Spanned,
     token::Comma,
-    Item, Meta, Path, Result,
 };
 
 #[derive(Default)]

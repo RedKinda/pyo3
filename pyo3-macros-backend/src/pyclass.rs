@@ -2,17 +2,17 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::{format_ident, quote, quote_spanned, ToTokens};
+use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{parse_quote, parse_quote_spanned, spanned::Spanned, ImplItemFn, Result, Token};
+use syn::{ImplItemFn, Result, Token, parse_quote, parse_quote_spanned, spanned::Spanned};
 
 use crate::PyFunctionOptions;
 use crate::attributes::kw::frozen;
 use crate::attributes::{
-    self, kw, take_pyo3_options, CrateAttribute, ExtendsAttribute, FreelistAttribute,
-    ModuleAttribute, NameAttribute, NameLitStr, RenameAllAttribute, StrFormatterAttribute,
+    self, CrateAttribute, ExtendsAttribute, FreelistAttribute, ModuleAttribute, NameAttribute,
+    NameLitStr, RenameAllAttribute, StrFormatterAttribute, kw, take_pyo3_options,
 };
 use crate::combine_errors::CombineErrors;
 #[cfg(feature = "experimental-inspect")]
@@ -24,17 +24,16 @@ use crate::method::{FnArg, FnSpec, PyArg, RegularArg};
 use crate::pyfunction::ConstructorAttribute;
 #[cfg(feature = "experimental-inspect")]
 use crate::pyfunction::FunctionSignature;
-use crate::pyimpl::{gen_py_const, get_cfg_attributes, PyClassMethodsType};
+use crate::pyimpl::{PyClassMethodsType, gen_py_const, get_cfg_attributes};
 #[cfg(feature = "experimental-inspect")]
 use crate::pymethod::field_python_name;
 use crate::pymethod::{
-    impl_py_class_attribute, impl_py_getter_def, impl_py_setter_def, MethodAndMethodDef,
-    MethodAndSlotDef, PropertyType, SlotDef, __GETITEM__, __HASH__, __INT__, __LEN__, __REPR__,
-    __RICHCMP__, __STR__,
+    __GETITEM__, __HASH__, __INT__, __LEN__, __REPR__, __RICHCMP__, __STR__, MethodAndMethodDef,
+    MethodAndSlotDef, PropertyType, SlotDef, impl_py_class_attribute, impl_py_getter_def,
+    impl_py_setter_def,
 };
 use crate::pyversions::{is_abi3_before, is_py_before};
-use crate::utils::{self, apply_renaming_rule, Ctx, LitCStr, PythonDoc};
-use crate::PyFunctionOptions;
+use crate::utils::{self, Ctx, LitCStr, PythonDoc, apply_renaming_rule};
 
 /// If the class is derived from a Rust `struct` or `enum`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -2251,6 +2250,26 @@ fn pyclass_auto_new<'a>(
                     field_types.push(&field.ty);
                 }
 
+                // we also generate a function _pyo3_generated_annotations
+                // that returns a pydict mapping field names to types
+                // types are determined by taking the IntoPyObject::Target of the field type
+
+                /*
+                #[classmethod]
+                fn test<'py>(
+                    cls: &pyo3::Bound<'py, pyo3::types::PyType>,
+                ) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+                    let py = cls.py();
+                    let dict = pyo3::types::PyDict::new(py);
+                    <pyo3::Bound<'py, pyo3::types::PyDict> as pyo3::types::PyDictMethods>::set_item(
+                        &dict,
+                        "fieldnamehere",
+                        <<u64 as pyo3::IntoPyObject>::Target as pyo3::PyTypeInfo>::type_object(py),
+                    )?;
+                    Ok(dict)
+                }
+                 */
+
                 parse_quote_spanned! { opt.span() =>
                     #[#pyo3_path::pymethods]
                     impl #cls {
@@ -2259,6 +2278,29 @@ fn pyclass_auto_new<'a>(
                             Self {
                                 #( #field_idents, )*
                             }
+                        }
+
+                        #[classmethod]
+                        fn _pyo3_generated_annotations<'py>(cls: &#pyo3_path::Bound<'py, #pyo3_path::types::PyType>) -> #pyo3_path::PyResult<#pyo3_path::Bound<'py, #pyo3_path::types::PyDict>> {
+                            let py = cls.py();
+                            let dict = #pyo3_path::types::PyDict::new(py);
+
+
+                            #(
+                                {
+                                    let type_output = <#field_types as #pyo3_path::IntoPyObject>::type_output();
+                                    let s = format!("{}", type_output);
+                                    // make it a python string
+                                    let py_type_name = #pyo3_path::types::PyString::new(py, &s);
+                                    #pyo3_path::types::PyDictMethods::set_item(
+                                        &dict,
+                                        stringify!(#field_idents),
+                                        &py_type_name,
+                                    )?;
+                                }
+                            )*
+
+                            Ok(dict)
                         }
                     }
 
