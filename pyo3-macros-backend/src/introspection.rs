@@ -234,7 +234,7 @@ fn arguments_introspection_data<'a>(
         } else {
             panic!("Less arguments than in python signature");
         };
-        let arg = argument_introspection_data(param, arg_desc, class_type);
+        let arg = argument_introspection_data(&param.name, arg_desc, class_type);
         if i < signature.python_signature.positional_only_parameters {
             posonlyargs.push(arg);
         } else {
@@ -257,7 +257,11 @@ fn arguments_introspection_data<'a>(
         let Some(FnArg::Regular(arg_desc)) = argument_desc.next() else {
             panic!("Less arguments than in python signature");
         };
-        kwonlyargs.push(argument_introspection_data(param, arg_desc, class_type));
+        kwonlyargs.push(argument_introspection_data(
+            &param.name,
+            arg_desc,
+            class_type,
+        ));
     }
 
     if let Some(param) = &signature.python_signature.kwargs {

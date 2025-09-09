@@ -267,13 +267,19 @@ impl ConstructorAttribute {
 }
 
 #[derive(Default, Clone)]
+pub struct TypedParameter {
+    pub name: String,
+    pub type_annotation: Option<String>,
+}
+
+#[derive(Default, Clone)]
 pub struct PythonSignature {
-    pub positional_parameters: Vec<String>,
+    pub positional_parameters: Vec<TypedParameter>,
     pub positional_only_parameters: usize,
     pub required_positional_parameters: usize,
     pub varargs: Option<String>,
     // Tuples of keyword name and whether it is required
-    pub keyword_only_parameters: Vec<(String, bool)>,
+    pub keyword_only_parameters: Vec<(TypedParameter, bool)>,
     pub kwargs: Option<String>,
 }
 
@@ -309,12 +315,16 @@ impl ParseState {
         &mut self,
         signature: &mut PythonSignature,
         name: String,
+        type_annotation: Option<String>,
         required: bool,
         span: Span,
     ) -> syn::Result<()> {
         match self {
             ParseState::Positional | ParseState::PositionalAfterPosargs => {
-                signature.positional_parameters.push(name);
+                signature.positional_parameters.push(TypedParameter {
+                    name,
+                    type_annotation,
+                });
                 if required {
                     signature.required_positional_parameters += 1;
                     ensure_spanned!(
@@ -325,7 +335,13 @@ impl ParseState {
                 Ok(())
             }
             ParseState::Keywords => {
-                signature.keyword_only_parameters.push((name, required));
+                signature.keyword_only_parameters.push((
+                    TypedParameter {
+                        name,
+                        type_annotation,
+                    },
+                    required,
+                ));
                 Ok(())
             }
             ParseState::Done => {
@@ -475,6 +491,7 @@ impl<'a> FunctionSignature<'a> {
                     parse_state.add_argument(
                         &mut python_signature,
                         arg.ident.unraw().to_string(),
+                        arg.colon_and_annotation.as_ref().map(|a| a.1.to_python()),
                         arg.eq_and_default.is_none(),
                         arg.span(),
                     )?;
@@ -588,9 +605,10 @@ impl<'a> FunctionSignature<'a> {
                     python_signature.positional_parameters.len() + 1;
             }
 
-            python_signature
-                .positional_parameters
-                .push(arg.name().unraw().to_string());
+            python_signature.positional_parameters.push(TypedParameter {
+                name: arg.name().unraw().to_string(),
+                type_annotation: None,
+            });
         }
 
         Self {
@@ -633,11 +651,15 @@ impl<'a> FunctionSignature<'a> {
         for (i, parameter) in py_sig.positional_parameters.iter().enumerate() {
             maybe_push_comma(&mut output);
 
-            output.push_str(parameter);
+            output.push_str(&parameter.name);
+            if let Some(annotation) = &parameter.type_annotation {
+                output.push_str(": ");
+                output.push_str(annotation);
+            }
 
             if i >= py_sig.required_positional_parameters {
                 output.push('=');
-                output.push_str(&self.default_value_for_parameter(parameter));
+                output.push_str(&self.default_value_for_parameter(&parameter.name));
             }
 
             if py_sig.positional_only_parameters > 0 && i + 1 == py_sig.positional_only_parameters {
@@ -656,10 +678,15 @@ impl<'a> FunctionSignature<'a> {
 
         for (parameter, required) in &py_sig.keyword_only_parameters {
             maybe_push_comma(&mut output);
-            output.push_str(parameter);
+            output.push_str(&parameter.name);
+            if let Some(annotation) = &parameter.type_annotation {
+                output.push_str(": ");
+                output.push_str(annotation);
+            }
+
             if !required {
                 output.push('=');
-                output.push_str(&self.default_value_for_parameter(parameter));
+                output.push_str(&self.default_value_for_parameter(&parameter.name));
             }
         }
 
@@ -669,7 +696,16 @@ impl<'a> FunctionSignature<'a> {
             output.push_str(kwargs);
         }
 
+        // add return value
+        if let Some(attribute) = &self.attribute {
+            if let Some((_, returns)) = &attribute.value.returns {
+                output.push_str(", this_is_actually_the_return_type_because_cpython_is_stupid: ");
+                output.push_str(&returns.to_python());
+            }
+        }
+
         output.push(')');
+
         output
     }
 }

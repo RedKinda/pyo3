@@ -88,18 +88,26 @@ pub fn impl_arg_params(
         );
     };
 
-    let positional_parameter_names = &spec.signature.python_signature.positional_parameters;
+    let positional_parameter_names = &spec
+        .signature
+        .python_signature
+        .positional_parameters
+        .iter()
+        .map(|p| &p.name)
+        .collect::<Vec<_>>();
     let positional_only_parameters = &spec.signature.python_signature.positional_only_parameters;
     let required_positional_parameters = &spec
         .signature
         .python_signature
         .required_positional_parameters;
+
     let keyword_only_parameters = spec
         .signature
         .python_signature
         .keyword_only_parameters
         .iter()
-        .map(|(name, required)| {
+        .map(|(param, required)| {
+            let name = &param.name;
             quote! {
                 #pyo3_path::impl_::extract_argument::KeywordOnlyParameterDescription {
                     name: #name,

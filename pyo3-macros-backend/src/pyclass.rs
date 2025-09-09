@@ -2,17 +2,16 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::{ToTokens, format_ident, quote, quote_spanned};
+use quote::{format_ident, quote, quote_spanned, ToTokens};
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{ImplItemFn, Result, Token, parse_quote, parse_quote_spanned, spanned::Spanned};
+use syn::{parse_quote, parse_quote_spanned, spanned::Spanned, ImplItemFn, Result, Token};
 
-use crate::PyFunctionOptions;
 use crate::attributes::kw::frozen;
 use crate::attributes::{
-    self, CrateAttribute, ExtendsAttribute, FreelistAttribute, ModuleAttribute, NameAttribute,
-    NameLitStr, RenameAllAttribute, StrFormatterAttribute, kw, take_pyo3_options,
+    self, kw, take_pyo3_options, CrateAttribute, ExtendsAttribute, FreelistAttribute,
+    ModuleAttribute, NameAttribute, NameLitStr, RenameAllAttribute, StrFormatterAttribute,
 };
 use crate::combine_errors::CombineErrors;
 #[cfg(feature = "experimental-inspect")]
@@ -24,16 +23,17 @@ use crate::method::{FnArg, FnSpec, PyArg, RegularArg};
 use crate::pyfunction::ConstructorAttribute;
 #[cfg(feature = "experimental-inspect")]
 use crate::pyfunction::FunctionSignature;
-use crate::pyimpl::{PyClassMethodsType, gen_py_const, get_cfg_attributes};
+use crate::pyimpl::{gen_py_const, get_cfg_attributes, PyClassMethodsType};
 #[cfg(feature = "experimental-inspect")]
 use crate::pymethod::field_python_name;
 use crate::pymethod::{
-    __GETITEM__, __HASH__, __INT__, __LEN__, __REPR__, __RICHCMP__, __STR__, MethodAndMethodDef,
-    MethodAndSlotDef, PropertyType, SlotDef, impl_py_class_attribute, impl_py_getter_def,
-    impl_py_setter_def,
+    impl_py_class_attribute, impl_py_getter_def, impl_py_setter_def, MethodAndMethodDef,
+    MethodAndSlotDef, PropertyType, SlotDef, __GETITEM__, __HASH__, __INT__, __LEN__, __REPR__,
+    __RICHCMP__, __STR__,
 };
 use crate::pyversions::{is_abi3_before, is_py_before};
-use crate::utils::{self, Ctx, LitCStr, PythonDoc, apply_renaming_rule};
+use crate::utils::{self, apply_renaming_rule, Ctx, LitCStr, PythonDoc};
+use crate::PyFunctionOptions;
 
 /// If the class is derived from a Rust `struct` or `enum`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -1111,7 +1111,24 @@ fn impl_complex_enum(
             });
         let output_type = if cfg!(feature = "experimental-inspect") {
             let full_name = get_class_python_module_and_name(cls, &args);
-            quote! { const OUTPUT_TYPE: &'static str = #full_name; }
+
+            let module = if let Some(module) = &args.options.module {
+                quote! { #pyo3_path::inspect::types::ModuleName::Module(::std::borrow::Cow::Borrowed(stringify!(#module))) }
+            } else {
+                quote! { #pyo3_path::inspect::types::ModuleName::CurrentModule }
+            };
+
+            quote! {
+                const OUTPUT_TYPE: &'static str = #full_name;
+
+                fn type_output() -> #pyo3_path::inspect::types::TypeInfo {
+                    #pyo3_path::inspect::types::TypeInfo::Class {
+                        module: #module,
+                        name: ::std::borrow::Cow::Borrowed(Self::OUTPUT_TYPE),
+                        type_vars: ::std::vec::Vec::new(),
+                    }
+                }
+            }
         } else {
             quote! {}
         };
@@ -1258,6 +1275,8 @@ fn impl_complex_enum_variant_match_args(
 
     Ok((variant_match_args, match_args_impl))
 }
+
+fn impl_complex_enum_struct_variant_annotations_getter(field: &PyClassEnumVariantNamedField<'_>) {}
 
 fn impl_complex_enum_struct_variant_cls(
     enum_name: &syn::Ident,
